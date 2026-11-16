@@ -16,6 +16,12 @@ UI source lives in [`src/`](src/). Upstream Windows-oriented UI also exists in
 
 ### macOS
 
+**Double-click** `Start QP Helper.command` (or `Start QP Helper.app`) in Finder.
+First launch creates `.venv` and a config file if needed; Terminal stays open
+on errors so you can read them.
+
+Or from a shell:
+
 ```bash
 ./scripts/setup_macos.sh
 cp qp_email_helper.config.example.json qp_email_helper.config.json
@@ -26,6 +32,8 @@ See [docs/macos.md](docs/macos.md) for `.app` / `.dmg` builds, codesigning,
 and notarization.
 
 ### Windows
+
+**Double-click** `Start QP Helper.bat`, or:
 
 ```powershell
 python -m venv .venv

@@ -6,6 +6,13 @@ macOS-native paths, menus, Finder integration, and packaging hooks.
 
 ## Dev run (Mac)
 
+**Easiest:** double-click `Start QP Helper.command` (or `Start QP Helper.app`)
+in Finder. That launcher `cd`s to the repo, runs `scripts/setup_macos.sh` when
+`.venv` is missing, copies the example config if needed, then starts the GUI.
+If launch fails, the Terminal window stays open so stderr remains visible.
+
+Or from a shell:
+
 ```bash
 ./scripts/setup_macos.sh
 cp qp_email_helper.config.example.json qp_email_helper.config.json
@@ -14,6 +21,10 @@ cp qp_email_helper.config.example.json qp_email_helper.config.json
 ```
 
 Default shared root on macOS: `~/Documents/QP Helper/Shared`.
+
+If a background/agent-started Python process vanishes after a few seconds with
+no traceback, prefer the `.command` launcher (Terminal-owned GUI session) so
+macOS does not sudden-terminate an anonymous `Python` accessory process.
 
 Outlook email fetch still needs Playwright browsers:
 

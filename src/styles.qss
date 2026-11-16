@@ -2,7 +2,7 @@
    Keep brand gold #C9A227 / charcoal sidebar; refine spacing & hierarchy. */
 
 QWidget {
-    font-family: "SF Pro Text", "Helvetica Neue", "PingFang SC", "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", "Noto Sans CJK SC", sans-serif;
+    font-family: "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", ".AppleSystemUIFont", "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", "Noto Sans CJK SC", sans-serif;
     font-size: 13px;
     color: #1c1c1e;
 }

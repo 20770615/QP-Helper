@@ -12,6 +12,9 @@ build/
 # macOS
 .DS_Store
 *.app/
+# Keep the double-click starter wrapper (not the PyInstaller build product).
+!Start QP Helper.app/
+!Start QP Helper.app/**
 packaging/macos/dist/
 packaging/macos/build/
 

@@ -1,6 +1,7 @@
 """Cross-platform helpers for QP Helper (Windows / macOS / Linux)."""
 from __future__ import annotations
 
+import ctypes
 import os
 import subprocess
 import sys
@@ -45,10 +46,94 @@ def default_g_paths() -> dict[str, str]:
 def ui_font_families() -> str:
     """CSS font-family stack that works on macOS, Windows, and Linux."""
     if is_macos():
-        return '"SF Pro Text", "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", sans-serif'
+        # Prefer real installed families. "SF Pro Text" is often unavailable as a
+        # named CSS family and triggers Qt font-alias warnings on clean Macs.
+        return '"Helvetica Neue", "PingFang SC", "Hiragino Sans GB", ".AppleSystemUIFont", sans-serif'
     if is_windows():
         return '"Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", sans-serif'
     return '"Noto Sans", "Noto Sans CJK SC", "DejaVu Sans", sans-serif'
+
+
+def _objc_msgSend(objc, receiver, selector, *args):
+    """Tiny objc_msgSend helper (ctypes) used by macOS lifecycle tweaks."""
+    sel = objc.sel_registerName(selector if isinstance(selector, bytes) else selector.encode())
+    objc.objc_msgSend.restype = ctypes.c_void_p
+    if not args:
+        objc.objc_msgSend.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+        return objc.objc_msgSend(receiver, sel)
+    if len(args) == 1:
+        objc.objc_msgSend.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
+        return objc.objc_msgSend(receiver, sel, args[0])
+    raise TypeError("unsupported objc_msgSend arity")
+
+
+def disable_macos_sudden_termination() -> None:
+    """Keep the GUI alive: AppKit sudden/automatic termination can SIGKILL anon Python apps."""
+    if not is_macos():
+        return
+    try:
+        import ctypes
+        import ctypes.util
+
+        lib_name = ctypes.util.find_library("objc")
+        if not lib_name:
+            return
+        objc = ctypes.cdll.LoadLibrary(lib_name)
+        objc.objc_getClass.restype = ctypes.c_void_p
+        objc.sel_registerName.restype = ctypes.c_void_p
+
+        NSProcessInfo = objc.objc_getClass(b"NSProcessInfo")
+        info = _objc_msgSend(objc, NSProcessInfo, b"processInfo")
+        if not info:
+            return
+        _objc_msgSend(objc, info, b"disableSuddenTermination")
+
+        # disableAutomaticTermination: needs an NSString reason.
+        NSString = objc.objc_getClass(b"NSString")
+        reason = _objc_msgSend(
+            objc,
+            NSString,
+            b"stringWithUTF8String:",
+            ctypes.c_char_p(b"QP Helper desktop session"),
+        )
+        if reason:
+            _objc_msgSend(objc, info, b"disableAutomaticTermination:", reason)
+    except Exception:
+        pass
+
+
+def ensure_macos_activation_policy_regular() -> None:
+    """Show a Dock icon and behave like a normal foreground app (not an accessory)."""
+    if not is_macos():
+        return
+    try:
+        import ctypes
+        import ctypes.util
+
+        lib_name = ctypes.util.find_library("objc")
+        if not lib_name:
+            return
+        objc = ctypes.cdll.LoadLibrary(lib_name)
+        objc.objc_getClass.restype = ctypes.c_void_p
+        objc.sel_registerName.restype = ctypes.c_void_p
+
+        NSApplication = objc.objc_getClass(b"NSApplication")
+        app = _objc_msgSend(objc, NSApplication, b"sharedApplication")
+        if not app:
+            return
+        # NSApplicationActivationPolicyRegular == 0
+        objc.objc_msgSend.restype = ctypes.c_bool
+        objc.objc_msgSend.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_long]
+        objc.objc_msgSend(
+            app,
+            objc.sel_registerName(b"setActivationPolicy:"),
+            0,
+        )
+        objc.objc_msgSend.restype = ctypes.c_void_p
+        objc.objc_msgSend.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+        _objc_msgSend(objc, app, b"activateIgnoringOtherApps:", ctypes.c_bool(True))
+    except Exception:
+        pass
 
 
 def venv_python_candidates(root: Path) -> list[Path]:
@@ -144,5 +229,13 @@ def apply_qt_macos_tweaks(app) -> None:
     # Ensure menus merge into the macOS system menu bar.
     try:
         app.setAttribute(app.ApplicationAttribute.AA_DontShowIconsInMenus, True)
+    except Exception:
+        pass
+    # Prefer a normal Dock app over an anonymous accessory process.
+    ensure_macos_activation_policy_regular()
+    # AppKit may otherwise sudden-terminate background Python GUIs (SIGKILL).
+    disable_macos_sudden_termination()
+    try:
+        app.setQuitOnLastWindowClosed(True)
     except Exception:
         pass

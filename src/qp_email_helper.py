@@ -99,11 +99,15 @@ def _load_stylesheet() -> str:
     if qss_path.exists():
         try:
             raw = qss_path.read_text(encoding="utf-8")
-            # Rewrite Windows-centric font stack for the active platform.
-            return raw.replace(
+            # Rewrite the shared font stack for the active platform.
+            for needle in (
+                '"Helvetica Neue", "PingFang SC", "Hiragino Sans GB", ".AppleSystemUIFont", "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", "Noto Sans CJK SC", sans-serif',
+                '"SF Pro Text", "Helvetica Neue", "PingFang SC", "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", "Noto Sans CJK SC", sans-serif',
                 '"Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", sans-serif',
-                ui_font_families(),
-            )
+            ):
+                if needle in raw:
+                    return raw.replace(needle, ui_font_families())
+            return raw
         except Exception:
             pass
     return _FALLBACK_STYLE

@@ -1,0 +1,12 @@
+#!/bin/bash
+# Minimal .app wrapper: open the sibling .command in Terminal so errors stay visible.
+DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
+CMD="$DIR/Start QP Helper.command"
+if [[ ! -x "$CMD" ]]; then
+  chmod +x "$CMD" 2>/dev/null || true
+fi
+if [[ ! -f "$CMD" ]]; then
+  osascript -e 'display alert "QP Helper" message "Start QP Helper.command is missing next to this app." as critical'
+  exit 1
+fi
+open -a Terminal "$CMD"
