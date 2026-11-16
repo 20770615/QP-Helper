@@ -51,6 +51,23 @@ cp qp_email_helper.config.example.json qp_email_helper.config.json
 ./scripts/run.sh
 ```
 
+## RAG service
+
+The local FastAPI backend lives in `rag_service/` (uses the `rag/` package,
+LanceDB by default). Needs **Python ≥3.10** in `.venv` (Apple CLT `python3` is
+3.9.x — too old for `lancedb>=0.34`). `scripts/setup_macos.sh` auto-picks
+python3.10+ from PATH or `~/.local/micromamba/envs/qp-helper-py311`.
+
+```bash
+./scripts/setup_macos.sh       # creates .venv with Python ≥3.10 when available
+./scripts/setup_rag_macos.sh   # if RAG deps are not installed yet
+./scripts/run_rag_service.sh   # or double-click Start RAG Service.command
+```
+
+The desktop app also auto-starts this service on launch (port from config,
+default `8765`). Set `llm_*` in `qp_email_helper.config.json` for answers;
+embeddings use a local sentence-transformers model (no API key).
+
 ## Config
 
 Copy `qp_email_helper.config.example.json` → `qp_email_helper.config.json`

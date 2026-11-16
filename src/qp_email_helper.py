@@ -285,7 +285,10 @@ class RagServiceManager:
         script = self._find_service_script()
         py = self._find_python()
         if not script:
-            return False, "service script not found"
+            return False, (
+                "rag_service/main.py not found — run setup / pull the Mac branch "
+                "that includes the rag/ + rag_service/ packages"
+            )
         if not py:
             return False, t("st.service_error_no_python")
         import subprocess
@@ -299,16 +302,29 @@ class RagServiceManager:
         if llm.get("model"):
             env["RAG_LLM_MODEL"] = llm["model"]
         env["RAG_CONFIG_PATH"] = str(config_manager.APP_CONFIG_FILE)
+        # Default to LanceDB on all platforms (matches scripts/run_qdrant.*).
+        env.setdefault("RAG_VECTOR_BACKEND", "lancedb")
+        log_dir = _ROOT / "logs"
+        try:
+            log_dir.mkdir(parents=True, exist_ok=True)
+            log_path = log_dir / "rag_service.log"
+            log_fh = open(log_path, "a", encoding="utf-8")
+        except Exception:
+            log_fh = subprocess.DEVNULL
+            log_path = None
         try:
             self._proc = subprocess.Popen(
                 [str(py), str(script), "--host", "127.0.0.1", "--port", str(self.port)],
                 cwd=str(script.parent.parent),
                 env=env,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stdout=log_fh,
+                stderr=subprocess.STDOUT,
                 **subprocess_hidden_kwargs(),
             )
-            return True, f"started pid={self._proc.pid}"
+            msg = f"started pid={self._proc.pid}"
+            if log_path is not None:
+                msg += f" log={log_path}"
+            return True, msg
         except Exception as e:
             return False, str(e)
 

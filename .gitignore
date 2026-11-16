@@ -45,4 +45,7 @@ __pycache__/
 # Local vector / cache data
 *.lance/
 lancedb_store/
+chroma_store/
+qdrant_store/
 embedding_model_cache/
+logs/

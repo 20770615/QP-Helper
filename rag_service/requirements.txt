@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+httpx
+chromadb
+docling
+openai-agents      # OpenAI Agents SDK（Codex 同款引擎）；提供 Agent/Runner/function_tool
+openai             # Agents SDK 的依赖，显式列出以防万一
+python-docx        # 生成 UCITS 日报 .docx（report_docx.py / report_gen.py 依赖）
+sentence-transformers>=2.0   # multilingual embeddings for the RAG store
+qdrant-client>=1.7            # optional disk-backed, low-RAM vector store (set VECTOR_BACKEND=qdrant)
+lancedb>=0.34
