@@ -435,13 +435,33 @@ class OpenAIAgentsHarness(BaseHarness):
     gate. All of this is prompt-level — no framework or tool change required.
     """
 
+    @staticmethod
+    def _normalize_model(model: str) -> str:
+        raw = (model or "").strip()
+        if not raw:
+            return ""
+        key = raw.lower().replace("_", "-").replace(" ", "")
+        aliases = {
+            "deepseek-flash": "deepseek-flash",
+            "deepseek-v4-flash": "deepseek-flash",
+            "deepseekv4flash": "deepseek-flash",
+            "deepseek-v4-pro": "deepseek-v4-pro",
+            "deepseek-v4pro": "deepseek-v4-pro",
+            "deepseekv4pro": "deepseek-v4-pro",
+        }
+        if key in aliases:
+            return aliases[key]
+        if key.startswith("deepseek"):
+            return key
+        return raw
+
     def __init__(self, base_url: str, api_key: str, model: str, auto_retrieve: bool = False,
                  kb_triggers: list[str] | None = None):
         from rag.retrieve import retrieve  # local import keeps rag/ untouched
         from rag._pathmatch import source_matches  # shared folder/file scoping
         self._retrieve = retrieve
         self._source_matches = source_matches
-        self.model = model or "gpt-4o"
+        self.model = self._normalize_model(model) or "gpt-4o"
         self._key_set = bool(api_key)
         # Shared-scope: retrieval filters by scope only, never by user_id.
         # user_id is for audit/attribution, not for filtering.

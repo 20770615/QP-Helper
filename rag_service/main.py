@@ -222,6 +222,27 @@ def _resolve_holdings_path(cfg: dict) -> Path | None:
     return None
 
 
+def _normalize_llm_model(model) -> str:
+    """Canonicalize DeepSeek (etc.) model ids — APIs reject wrong casing."""
+    raw = (model or "").strip() if isinstance(model, str) else ""
+    if not raw:
+        return ""
+    key = raw.lower().replace("_", "-").replace(" ", "")
+    aliases = {
+        "deepseek-flash": "deepseek-flash",
+        "deepseek-v4-flash": "deepseek-flash",
+        "deepseekv4flash": "deepseek-flash",
+        "deepseek-v4-pro": "deepseek-v4-pro",
+        "deepseek-v4pro": "deepseek-v4-pro",
+        "deepseekv4pro": "deepseek-v4-pro",
+    }
+    if key in aliases:
+        return aliases[key]
+    if key.startswith("deepseek"):
+        return key
+    return raw
+
+
 def _resolve_cfg() -> dict:
     """Build the effective LLM config.
 
@@ -238,7 +259,7 @@ def _resolve_cfg() -> dict:
             d = json.loads(p.read_text(encoding="utf-8"))
             cfg["base_url"] = (d.get("llm_base_url") or "").strip()
             cfg["api_key"] = (d.get("llm_api_key") or "").strip()
-            cfg["model"] = (d.get("llm_model") or "").strip()
+            cfg["model"] = _normalize_llm_model(d.get("llm_model"))
             cfg["auto_retrieve"] = bool(d.get("auto_retrieve", False))
             # User-defined KB-retrieval trigger words. None / empty => the
             # harness falls back to its built-in list. Stored as a JSON array
@@ -250,14 +271,17 @@ def _resolve_cfg() -> dict:
             pass
     cfg["base_url"] = (os.environ.get("RAG_LLM_BASE_URL") or "").strip() or cfg["base_url"]
     cfg["api_key"] = (os.environ.get("RAG_LLM_API_KEY") or "").strip() or cfg["api_key"]
-    cfg["model"] = (os.environ.get("RAG_LLM_MODEL") or "").strip() or cfg["model"]
+    cfg["model"] = _normalize_llm_model(
+        (os.environ.get("RAG_LLM_MODEL") or "").strip() or cfg["model"]
+    )
     # Live /config override wins if present (so a runtime key change isn't lost).
     if CFG.get("api_key"):
         cfg["api_key"] = CFG["api_key"]
     if CFG.get("base_url"):
         cfg["base_url"] = CFG["base_url"]
     if CFG.get("model"):
-        cfg["model"] = CFG["model"]
+        cfg["model"] = _normalize_llm_model(CFG["model"])
+    cfg["model"] = _normalize_llm_model(cfg.get("model"))
     if "auto_retrieve" in CFG:
         cfg["auto_retrieve"] = bool(CFG["auto_retrieve"])
     if "kb_triggers" in CFG:
@@ -793,7 +817,7 @@ def config(req: ConfigReq):
     if req.api_key is not None:
         CFG["api_key"] = req.api_key
     if req.model is not None:
-        CFG["model"] = req.model
+        CFG["model"] = _normalize_llm_model(req.model)
     if req.user_id is not None:
         CFG["user_id"] = req.user_id
     if req.scope is not None:

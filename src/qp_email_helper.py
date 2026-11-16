@@ -82,6 +82,7 @@ from config_manager import (
     set_shared_root,
     get_holdings_csv_path,
     set_holdings_csv_path,
+    normalize_llm_model,
 )
 from i18n import t, placeholder_skills
 from rag_client import RagClient
@@ -159,21 +160,6 @@ QPushButton#sendBtn {
   font-weight: 700;
 }
 QPushButton#sendBtn:disabled { background: #4a4330; color: #888; }
-QFrame.bubbleUser {
-  background: #1c2330;
-  border: 1px solid #2c3344;
-  border-radius: 14px;
-}
-QFrame.bubbleAgent {
-  background: #12161f;
-  border: 1px solid #2a4a6a;
-  border-radius: 14px;
-}
-QFrame.bubbleInfo {
-  background: #101820;
-  border: 1px solid #2a4a6a;
-  border-radius: 12px;
-}
 """.replace("__UI_FONTS__", ui_font_families())
 
 class OnboardingDialog(QDialog):
@@ -429,31 +415,86 @@ class HomeView(QWidget):
         self.welcome.hide()
 
     def _add_bubble(self, text: str, kind: str = "user"):
+        """Append a chat turn. User = right bubble; assistant = left plain text."""
         self._hide_welcome()
-        frame = QFrame()
-        frame.setProperty("class", f"bubble{kind.title()}")
-        if kind == "user":
-            frame.setProperty("class", "bubbleUser")
-            frame.setStyleSheet("QFrame{background:#1c2330;border:1px solid #2c3344;border-radius:14px;}")
-        elif kind == "agent":
-            frame.setStyleSheet("QFrame{background:#12161f;border:1px solid #2a4a6a;border-radius:14px;}")
-        else:
-            frame.setStyleSheet("QFrame{background:#101820;border:1px solid #2a4a6a;border-radius:12px;}")
-        lay = QVBoxLayout(frame)
+        row = QWidget()
+        row_lay = QHBoxLayout(row)
+        row_lay.setContentsMargins(0, 2, 0, 2)
+        row_lay.setSpacing(8)
+
+        body = QFrame()
+        body_lay = QVBoxLayout(body)
+        body_lay.setContentsMargins(12, 10, 12, 8)
+        body_lay.setSpacing(6)
+
         browser = QTextBrowser()
         browser.setOpenExternalLinks(True)
-        browser.setHtml(text.replace("\n", "<br>"))
+        # Escape is not applied — callers may pass light HTML (citations).
+        html = text if "<" in text and ">" in text else text.replace("\n", "<br>")
+        browser.setHtml(html)
         browser.setFrameShape(QFrame.Shape.NoFrame)
-        browser.setStyleSheet("background:transparent;color:#e8eaed;")
-        browser.setMaximumHeight(320)
-        lay.addWidget(browser)
-        copy_btn = QPushButton(t("chat.copy"))
-        copy_btn.setFlat(True)
-        copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(browser.toPlainText()))
-        lay.addWidget(copy_btn, 0, Qt.AlignmentFlag.AlignRight)
-        # insert before stretch
-        self.chat_layout.insertWidget(self.chat_layout.count() - 1, frame)
-        QTimer.singleShot(50, lambda: self.scroll.verticalScrollBar().setValue(self.scroll.verticalScrollBar().maximum()))
+        browser.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        browser.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        browser.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        def _fit():
+            browser.document().setTextWidth(max(120, browser.viewport().width()))
+            h = int(browser.document().size().height()) + 8
+            browser.setFixedHeight(max(28, min(h, 900)))
+
+        browser.document().contentsChanged.connect(_fit)
+        QTimer.singleShot(0, _fit)
+
+        if kind == "user":
+            body.setObjectName("chatBubbleUser")
+            browser.setObjectName("chatBubbleUserText")
+            browser.setStyleSheet("background:transparent;color:#0f172a;")
+            body_lay.setContentsMargins(14, 10, 14, 10)
+            body_lay.addWidget(browser)
+            # Cursor-style: user bubble on the right, capped width.
+            body.setMaximumWidth(520)
+            row_lay.addStretch(1)
+            row_lay.addWidget(body, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
+        elif kind == "agent":
+            # Assistant: left-aligned prose — no twin dark card.
+            body.setObjectName("chatBubbleAgent")
+            body.setStyleSheet(
+                "QFrame#chatBubbleAgent{background:transparent;border:none;border-radius:0;}"
+            )
+            browser.setObjectName("chatBubbleAgentText")
+            browser.setStyleSheet(
+                "background:transparent;color:#111827;font-size:13px;padding:0;"
+            )
+            body_lay.setContentsMargins(4, 2, 4, 2)
+            body_lay.addWidget(browser)
+            copy_btn = QPushButton(t("chat.copy"))
+            copy_btn.setFlat(True)
+            copy_btn.setStyleSheet(
+                "QPushButton{color:#6b7280;border:none;padding:0 4px;font-size:11px;}"
+                "QPushButton:hover{color:#b45309;}"
+            )
+            copy_btn.clicked.connect(
+                lambda: QApplication.clipboard().setText(browser.toPlainText())
+            )
+            body_lay.addWidget(copy_btn, 0, Qt.AlignmentFlag.AlignLeft)
+            row_lay.addWidget(body, 1, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+            row_lay.addStretch(1)
+        else:
+            body.setObjectName("chatBubbleInfo")
+            browser.setObjectName("chatBubbleAgentText")
+            browser.setStyleSheet("background:transparent;color:#1e3a5f;")
+            body_lay.addWidget(browser)
+            body.setMaximumWidth(640)
+            row_lay.addWidget(body, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+            row_lay.addStretch(1)
+
+        self.chat_layout.insertWidget(self.chat_layout.count() - 1, row)
+        QTimer.singleShot(
+            50,
+            lambda: self.scroll.verticalScrollBar().setValue(
+                self.scroll.verticalScrollBar().maximum()
+            ),
+        )
 
     def _send(self):
         q = self.input.toPlainText().strip()
@@ -541,10 +582,13 @@ class SettingsView(QWidget):
         for w, ph in [
             (self.base_url, t("st.base_url")),
             (self.api_key, t("st.api_key")),
-            (self.model, t("st.model")),
+            (self.model, "deepseek-v4-pro"),
         ]:
             w.setPlaceholderText(ph)
             lay.addWidget(w)
+        model_hint = QLabel("DeepSeek ids: deepseek-v4-pro · deepseek-flash (exact casing)")
+        model_hint.setStyleSheet("color:#6b7280;font-size:11px;")
+        lay.addWidget(model_hint)
         save = QPushButton(t("st.save_api"))
         save.clicked.connect(self._save_llm)
         lay.addWidget(save)
@@ -638,10 +682,12 @@ class SettingsView(QWidget):
         self.main._push_config_async()
 
     def _save_llm(self):
+        normalized = normalize_llm_model(self.model.text())
+        self.model.setText(normalized)
         update_app_config(
             llm_base_url=self.base_url.text().strip(),
             llm_api_key=self.api_key.text().strip(),
-            llm_model=self.model.text().strip(),
+            llm_model=normalized,
         )
         self.main._push_config_async()
         QMessageBox.information(self, t("st.saved"), t("st.saved_push"))

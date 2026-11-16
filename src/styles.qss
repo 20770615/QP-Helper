@@ -123,20 +123,17 @@ QTextBrowser#chatBubbleAgentText {
     color: #1f2937;
 }
 
-#chatBubble {
-    background: #eff6ff;
-    border: 1px solid #bfdbfe;
-    border-radius: 14px;
-}
+/* User turn: compact right-side bubble (Cursor-like). */
 #chatBubbleUser {
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 14px;
+    background: #eef2ff;
+    border: 1px solid #c7d2fe;
+    border-radius: 16px;
 }
+/* Assistant: plain left prose — not a twin card of the user bubble. */
 #chatBubbleAgent {
-    background: #fffdf5;
-    border: 1px solid #e8d48b;
-    border-radius: 14px;
+    background: transparent;
+    border: none;
+    border-radius: 0;
 }
 #chatBubbleInfo {
     background: #eff6ff;

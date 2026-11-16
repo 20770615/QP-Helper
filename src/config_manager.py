@@ -128,9 +128,38 @@ def save_app_config(cfg: dict[str, Any]) -> None:
 
 def update_app_config(**kwargs) -> dict[str, Any]:
     cfg = load_app_config()
+    if "llm_model" in kwargs and kwargs["llm_model"] is not None:
+        kwargs = dict(kwargs)
+        kwargs["llm_model"] = normalize_llm_model(str(kwargs["llm_model"]))
     cfg.update(kwargs)
     save_app_config(cfg)
     return cfg
+
+
+# DeepSeek (and similar) chat APIs are case-sensitive on model ids.
+# Map common UI / docs variants to the exact ids the API accepts.
+_LLM_MODEL_ALIASES: dict[str, str] = {
+    "deepseek-flash": "deepseek-flash",
+    "deepseek-v4-flash": "deepseek-flash",
+    "deepseekv4flash": "deepseek-flash",
+    "deepseek-v4-pro": "deepseek-v4-pro",
+    "deepseek-v4pro": "deepseek-v4-pro",
+    "deepseekv4pro": "deepseek-v4-pro",
+}
+
+
+def normalize_llm_model(model: str | None) -> str:
+    """Return the canonical API model id (lowercase / hyphenated aliases)."""
+    raw = (model or "").strip()
+    if not raw:
+        return ""
+    key = raw.lower().replace("_", "-").replace(" ", "")
+    if key in _LLM_MODEL_ALIASES:
+        return _LLM_MODEL_ALIASES[key]
+    # Generic DeepSeek: force lowercase hyphen form so "deepseek-V4-Pro" works.
+    if key.startswith("deepseek"):
+        return key
+    return raw
 
 
 def get_llm_config() -> dict[str, Any]:
@@ -138,7 +167,7 @@ def get_llm_config() -> dict[str, Any]:
     return {
         "base_url": (cfg.get("llm_base_url") or "").strip(),
         "api_key": (cfg.get("llm_api_key") or "").strip(),
-        "model": (cfg.get("llm_model") or "").strip(),
+        "model": normalize_llm_model(cfg.get("llm_model")),
         "auto_retrieve": bool(cfg.get("auto_retrieve", True)),
     }
 
