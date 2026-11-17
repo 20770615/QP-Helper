@@ -123,10 +123,10 @@ QTextBrowser#chatBubbleAgentText {
     color: #1f2937;
 }
 
-/* User turn: compact right-side bubble (Cursor-like). */
+/* User turn: compact right-side bubble — brand gold (matches #C9A227 / #d4af37). */
 #chatBubbleUser {
-    background: #eef2ff;
-    border: 1px solid #c7d2fe;
+    background: #f5f0d8;
+    border: 1px solid #d4af37;
     border-radius: 16px;
 }
 /* Assistant: plain left prose — not a twin card of the user bubble. */

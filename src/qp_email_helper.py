@@ -15,7 +15,9 @@ Run (from repo root)::
 """
 from __future__ import annotations
 
+import html as _html_mod
 import os
+import re
 import sys
 import traceback
 from pathlib import Path
@@ -474,8 +476,121 @@ class HomeView(QWidget):
     def _hide_welcome(self):
         self.welcome.hide()
 
+    @staticmethod
+    def _md_inline(text: str) -> str:
+        """Inline markdown → HTML (bold / italic / code / links)."""
+        text = _html_mod.escape(text or "", quote=False)
+        text = re.sub(
+            r"`([^`]+)`",
+            r"<code style='background:#f0f0f0;padding:1px 4px;border-radius:3px;"
+            r"font-family:Menlo,Consolas,monospace;font-size:12px;'>\1</code>",
+            text,
+        )
+        text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text)
+        text = re.sub(r"__(.+?)__", r"<b>\1</b>", text)
+        text = re.sub(r"\*(.+?)\*", r"<i>\1</i>", text)
+        text = re.sub(r"_(.+?)_", r"<i>\1</i>", text)
+        text = re.sub(
+            r"\[([^\]]+)\]\((https?://[^)]+)\)",
+            r"<a href='\2'>\1</a>",
+            text,
+        )
+        return text
+
+    @classmethod
+    def _md_to_html(cls, md: str) -> str:
+        """Lightweight markdown → HTML for assistant bubbles (Windows parity)."""
+        if not md:
+            return ""
+        # Already HTML (citations / info cards) — pass through.
+        stripped = md.lstrip()
+        if stripped.startswith("<") and ("</" in md or "/>" in md):
+            return md
+
+        lines = md.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+        out: list[str] = []
+        i = 0
+        in_list: list[str | None] = [None]
+
+        def close_list():
+            if in_list[0]:
+                out.append(f"</{in_list[0]}>")
+                in_list[0] = None
+
+        while i < len(lines):
+            line = lines[i]
+            if line.strip().startswith("```"):
+                close_list()
+                buf: list[str] = []
+                i += 1
+                while i < len(lines) and not lines[i].strip().startswith("```"):
+                    buf.append(lines[i])
+                    i += 1
+                i += 1  # closing fence
+                body = _html_mod.escape("\n".join(buf), quote=False)
+                out.append(
+                    "<pre style='background:#f5f5f5;padding:8px 10px;border-radius:6px;"
+                    "font-family:Menlo,Consolas,monospace;font-size:12px;"
+                    f"white-space:pre-wrap;'>{body}</pre>"
+                )
+                continue
+
+            hm = re.match(r"^(#{1,6})\s+(.*)$", line)
+            if hm:
+                close_list()
+                lvl = len(hm.group(1))
+                out.append(
+                    f"<h{lvl} style='margin:10px 0 4px;'>{cls._md_inline(hm.group(2))}</h{lvl}>"
+                )
+                i += 1
+                continue
+
+            lm = re.match(r"^\s*[-*+]\s+(.*)$", line)
+            if lm:
+                if in_list[0] != "ul":
+                    close_list()
+                    out.append("<ul style='margin:6px 0 6px 18px;padding:0;'>")
+                    in_list[0] = "ul"
+                out.append(f"<li style='margin:2px 0;'>{cls._md_inline(lm.group(1))}</li>")
+                i += 1
+                continue
+
+            nm = re.match(r"^\s*\d+\.\s+(.*)$", line)
+            if nm:
+                if in_list[0] != "ol":
+                    close_list()
+                    out.append("<ol style='margin:6px 0 6px 18px;padding:0;'>")
+                    in_list[0] = "ol"
+                out.append(f"<li style='margin:2px 0;'>{cls._md_inline(nm.group(1))}</li>")
+                i += 1
+                continue
+
+            if not line.strip():
+                close_list()
+                out.append("<div style='height:8px;'></div>")
+                i += 1
+                continue
+
+            close_list()
+            out.append(
+                f"<p style='margin:4px 0;line-height:1.55;'>{cls._md_inline(line)}</p>"
+            )
+            i += 1
+
+        close_list()
+        return "".join(out)
+
+    def _bubble_max_width(self, role: str) -> int:
+        """Prefer wide assistant column; keep user bubble compact."""
+        viewport = max(320, self.scroll.viewport().width() - 48)
+        if role == "agent":
+            return min(820, viewport)
+        if role == "info":
+            return min(720, viewport)
+        return min(520, viewport)
+
     def _add_bubble(self, text: str, kind: str = "user"):
-        """Append a chat turn. User = right bubble; assistant = left plain text."""
+        """Append a chat turn. User = right bubble; assistant = left markdown prose."""
         self._hide_welcome()
         row = QWidget()
         row_lay = QHBoxLayout(row)
@@ -489,8 +604,15 @@ class HomeView(QWidget):
 
         browser = QTextBrowser()
         browser.setOpenExternalLinks(True)
-        # Escape is not applied — callers may pass light HTML (citations).
-        html = text if "<" in text and ">" in text else text.replace("\n", "<br>")
+        if kind == "agent":
+            html = self._md_to_html(text)
+        elif kind == "info" and "<" in text and ">" in text:
+            html = text
+        else:
+            # User / plain info: escape + preserve newlines (light **bold** ok).
+            html = self._md_to_html(text) if ("**" in text or "*" in text) else (
+                self._md_inline(text).replace("\n", "<br>")
+            )
         browser.setHtml(html)
         browser.setFrameShape(QFrame.Shape.NoFrame)
         browser.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -508,15 +630,14 @@ class HomeView(QWidget):
         if kind == "user":
             body.setObjectName("chatBubbleUser")
             browser.setObjectName("chatBubbleUserText")
-            browser.setStyleSheet("background:transparent;color:#0f172a;")
+            browser.setStyleSheet("background:transparent;color:#1a1408;")
             body_lay.setContentsMargins(14, 10, 14, 10)
             body_lay.addWidget(browser)
-            # Cursor-style: user bubble on the right, capped width.
-            body.setMaximumWidth(520)
+            body.setMaximumWidth(self._bubble_max_width("user"))
             row_lay.addStretch(1)
             row_lay.addWidget(body, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
         elif kind == "agent":
-            # Assistant: left-aligned prose — no twin dark card.
+            # Assistant: left-aligned prose — use most of the row (no 50% stretch split).
             body.setObjectName("chatBubbleAgent")
             body.setStyleSheet(
                 "QFrame#chatBubbleAgent{background:transparent;border:none;border-radius:0;}"
@@ -537,16 +658,17 @@ class HomeView(QWidget):
                 lambda: QApplication.clipboard().setText(browser.toPlainText())
             )
             body_lay.addWidget(copy_btn, 0, Qt.AlignmentFlag.AlignLeft)
+            body.setMaximumWidth(self._bubble_max_width("agent"))
+            body.setMinimumWidth(min(480, self._bubble_max_width("agent")))
+            # Stretch factor 1, no trailing stretch — fills available width up to max.
             row_lay.addWidget(body, 1, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-            row_lay.addStretch(1)
         else:
             body.setObjectName("chatBubbleInfo")
             browser.setObjectName("chatBubbleAgentText")
             browser.setStyleSheet("background:transparent;color:#1e3a5f;")
             body_lay.addWidget(browser)
-            body.setMaximumWidth(640)
-            row_lay.addWidget(body, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-            row_lay.addStretch(1)
+            body.setMaximumWidth(self._bubble_max_width("info"))
+            row_lay.addWidget(body, 1, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
 
         self.chat_layout.insertWidget(self.chat_layout.count() - 1, row)
         QTimer.singleShot(
