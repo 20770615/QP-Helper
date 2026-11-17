@@ -9,3 +9,4 @@ python-docx        # 生成 UCITS 日报 .docx（report_docx.py / report_gen.py 
 sentence-transformers>=2.0   # multilingual embeddings for the RAG store
 qdrant-client>=1.7            # optional disk-backed, low-RAM vector store (set VECTOR_BACKEND=qdrant)
 lancedb>=0.34
+pylance>=0.20

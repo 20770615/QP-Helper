@@ -580,13 +580,21 @@ class HomeView(QWidget):
         close_list()
         return "".join(out)
 
+    def _chat_viewport_width(self) -> int:
+        """Usable width inside the chat scroll area (near full row)."""
+        w = self.scroll.viewport().width() if self.scroll else 0
+        if w < 200:
+            w = max(self.width() - 24, 320)
+        return max(280, w - 16)
+
     def _bubble_max_width(self, role: str) -> int:
-        """Prefer wide assistant column; keep user bubble compact."""
-        viewport = max(320, self.scroll.viewport().width() - 48)
+        """Assistant/info span near-full chat width; user bubble stays compact."""
+        viewport = self._chat_viewport_width()
         if role == "agent":
-            return min(820, viewport)
+            # No artificial 820px cap — stretch to the right edge of the chat.
+            return viewport
         if role == "info":
-            return min(720, viewport)
+            return viewport
         return min(520, viewport)
 
     def _make_bubble_copy_btn(self, browser: QTextBrowser, *, on_gold: bool = False) -> QPushButton:
@@ -652,12 +660,20 @@ class HomeView(QWidget):
         browser.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         def _fit():
-            browser.document().setTextWidth(max(120, browser.viewport().width()))
+            # Prefer the full chat viewport so wraps follow near-full width,
+            # not a half-sized browser that hasn't expanded yet.
+            target = browser.viewport().width()
+            if kind in ("agent", "info"):
+                target = max(target, self._chat_viewport_width() - 24)
+            elif target < 80:
+                target = self._bubble_max_width("user") - 28
+            browser.document().setTextWidth(max(120, target))
             h = int(browser.document().size().height()) + 8
             browser.setFixedHeight(max(28, min(h, 900)))
 
         browser.document().contentsChanged.connect(_fit)
         QTimer.singleShot(0, _fit)
+        QTimer.singleShot(50, _fit)
 
         def _add_copy_row(*, on_gold: bool = False):
             copy_btn = self._make_bubble_copy_btn(browser, on_gold=on_gold)
@@ -679,7 +695,7 @@ class HomeView(QWidget):
             row_lay.addStretch(1)
             row_lay.addWidget(body, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
         elif kind == "agent":
-            # Assistant: left-aligned prose — use most of the row (no 50% stretch split).
+            # Assistant: expand to near-full chat width (right edge of scroll area).
             body.setObjectName("chatBubbleAgent")
             body.setStyleSheet(
                 "QFrame#chatBubbleAgent{background:transparent;border:none;border-radius:0;}"
@@ -691,18 +707,20 @@ class HomeView(QWidget):
             body_lay.setContentsMargins(4, 2, 4, 2)
             body_lay.addWidget(browser)
             _add_copy_row(on_gold=False)
+            body.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
             body.setMaximumWidth(self._bubble_max_width("agent"))
-            body.setMinimumWidth(min(480, self._bubble_max_width("agent")))
-            # Stretch factor 1, no trailing stretch — fills available width up to max.
-            row_lay.addWidget(body, 1, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+            body.setMinimumWidth(0)
+            row.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+            row_lay.addWidget(body, 1)
         else:
             body.setObjectName("chatBubbleInfo")
             browser.setObjectName("chatBubbleAgentText")
             browser.setStyleSheet("background:transparent;color:#1e3a5f;")
             body_lay.addWidget(browser)
             _add_copy_row(on_gold=False)
+            body.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
             body.setMaximumWidth(self._bubble_max_width("info"))
-            row_lay.addWidget(body, 1, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+            row_lay.addWidget(body, 1)
 
         self.chat_layout.insertWidget(self.chat_layout.count() - 1, row)
         QTimer.singleShot(
