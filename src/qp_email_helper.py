@@ -589,6 +589,38 @@ class HomeView(QWidget):
             return min(720, viewport)
         return min(520, viewport)
 
+    def _make_bubble_copy_btn(self, browser: QTextBrowser, *, on_gold: bool = False) -> QPushButton:
+        """Bottom-right Copy control for chat bubbles."""
+        copy_btn = QPushButton(t("chat.copy"))
+        copy_btn.setObjectName("bubbleCopyBtn")
+        copy_btn.setFlat(True)
+        copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        copy_btn.setToolTip(t("chat.copy"))
+        if on_gold:
+            # Readable on the warm gold user bubble.
+            copy_btn.setStyleSheet(
+                "QPushButton#bubbleCopyBtn{color:#8a6d0b;border:none;padding:2px 6px;"
+                "font-size:11px;font-weight:600;background:transparent;}"
+                "QPushButton#bubbleCopyBtn:hover{color:#1a1408;text-decoration:underline;}"
+                "QPushButton#bubbleCopyBtn:pressed{color:#5c4a08;}"
+            )
+        else:
+            copy_btn.setStyleSheet(
+                "QPushButton#bubbleCopyBtn{color:#6b7280;border:none;padding:2px 6px;"
+                "font-size:11px;font-weight:600;background:transparent;}"
+                "QPushButton#bubbleCopyBtn:hover{color:#b45309;text-decoration:underline;}"
+                "QPushButton#bubbleCopyBtn:pressed{color:#92400e;}"
+            )
+
+        def _copy():
+            QApplication.clipboard().setText(browser.toPlainText())
+            prev = copy_btn.text()
+            copy_btn.setText(t("chat.copied"))
+            QTimer.singleShot(1200, lambda: copy_btn.setText(prev))
+
+        copy_btn.clicked.connect(_copy)
+        return copy_btn
+
     def _add_bubble(self, text: str, kind: str = "user"):
         """Append a chat turn. User = right bubble; assistant = left markdown prose."""
         self._hide_welcome()
@@ -627,12 +659,22 @@ class HomeView(QWidget):
         browser.document().contentsChanged.connect(_fit)
         QTimer.singleShot(0, _fit)
 
+        def _add_copy_row(*, on_gold: bool = False):
+            copy_btn = self._make_bubble_copy_btn(browser, on_gold=on_gold)
+            foot = QHBoxLayout()
+            foot.setContentsMargins(0, 2, 0, 0)
+            foot.setSpacing(0)
+            foot.addStretch(1)
+            foot.addWidget(copy_btn, 0, Qt.AlignmentFlag.AlignRight)
+            body_lay.addLayout(foot)
+
         if kind == "user":
             body.setObjectName("chatBubbleUser")
             browser.setObjectName("chatBubbleUserText")
             browser.setStyleSheet("background:transparent;color:#1a1408;")
-            body_lay.setContentsMargins(14, 10, 14, 10)
+            body_lay.setContentsMargins(14, 10, 14, 8)
             body_lay.addWidget(browser)
+            _add_copy_row(on_gold=True)
             body.setMaximumWidth(self._bubble_max_width("user"))
             row_lay.addStretch(1)
             row_lay.addWidget(body, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
@@ -648,16 +690,7 @@ class HomeView(QWidget):
             )
             body_lay.setContentsMargins(4, 2, 4, 2)
             body_lay.addWidget(browser)
-            copy_btn = QPushButton(t("chat.copy"))
-            copy_btn.setFlat(True)
-            copy_btn.setStyleSheet(
-                "QPushButton{color:#6b7280;border:none;padding:0 4px;font-size:11px;}"
-                "QPushButton:hover{color:#b45309;}"
-            )
-            copy_btn.clicked.connect(
-                lambda: QApplication.clipboard().setText(browser.toPlainText())
-            )
-            body_lay.addWidget(copy_btn, 0, Qt.AlignmentFlag.AlignLeft)
+            _add_copy_row(on_gold=False)
             body.setMaximumWidth(self._bubble_max_width("agent"))
             body.setMinimumWidth(min(480, self._bubble_max_width("agent")))
             # Stretch factor 1, no trailing stretch — fills available width up to max.
@@ -667,6 +700,7 @@ class HomeView(QWidget):
             browser.setObjectName("chatBubbleAgentText")
             browser.setStyleSheet("background:transparent;color:#1e3a5f;")
             body_lay.addWidget(browser)
+            _add_copy_row(on_gold=False)
             body.setMaximumWidth(self._bubble_max_width("info"))
             row_lay.addWidget(body, 1, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
 
