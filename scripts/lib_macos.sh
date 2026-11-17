@@ -70,3 +70,23 @@ qp_rag_imports_ok() {
   [[ -x "$py" ]] || return 1
   "$py" -c "import fastapi, uvicorn, lancedb, sentence_transformers, httpx" 2>/dev/null
 }
+
+# After git clone / zip extract, +x bits or Gatekeeper quarantine can break
+# double-click launchers. Best-effort restore; never fails the caller.
+qp_fix_launch_perms() {
+  local root="${1:-.}"
+  chmod +x \
+    "$root/scripts/"*.sh \
+    "$root/Start QP Helper.command" \
+    "$root/Start RAG Service.command" \
+    "$root/Start QP Helper.app/Contents/MacOS/launcher" \
+    2>/dev/null || true
+  if command -v xattr >/dev/null 2>&1; then
+    xattr -dr com.apple.quarantine \
+      "$root/Start QP Helper.command" \
+      "$root/Start RAG Service.command" \
+      "$root/Start QP Helper.app" \
+      "$root/scripts" \
+      2>/dev/null || true
+  fi
+}

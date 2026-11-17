@@ -10,8 +10,15 @@ cd "$ROOT" || {
   exit 1
 }
 
+# Heal +x / quarantine after clone or zip download (best effort).
+chmod +x "$ROOT/scripts/"*.sh "$ROOT/Start QP Helper.command" "$ROOT/Start RAG Service.command" 2>/dev/null || true
+if command -v xattr >/dev/null 2>&1; then
+  xattr -dr com.apple.quarantine "$ROOT/Start QP Helper.command" "$ROOT/Start QP Helper.app" "$ROOT/scripts" 2>/dev/null || true
+fi
+
 # shellcheck disable=SC1091
 source "$ROOT/scripts/lib_macos.sh"
+qp_fix_launch_perms "$ROOT"
 
 echo "QP Helper"
 echo "Repo: $ROOT"
@@ -26,13 +33,16 @@ fi
 
 if [[ "$NEED_SETUP" -eq 1 ]]; then
   echo "Setting up .venv / deps (first launch may take a few minutes)…"
-  if [[ ! -x "$ROOT/scripts/setup_macos.sh" ]]; then
+  echo "Requires Python ≥3.10 on PATH (not Apple CLT 3.9)."
+  if [[ ! -f "$ROOT/scripts/setup_macos.sh" ]]; then
     echo "ERROR: scripts/setup_macos.sh is missing." >&2
     read -r -p "Press Enter to close…"
     exit 1
   fi
+  chmod +x "$ROOT/scripts/setup_macos.sh" 2>/dev/null || true
   if ! "$ROOT/scripts/setup_macos.sh"; then
     echo "ERROR: setup_macos.sh failed." >&2
+    echo "Install Python 3.11+ (brew install python@3.11) then retry." >&2
     read -r -p "Press Enter to close…"
     exit 1
   fi

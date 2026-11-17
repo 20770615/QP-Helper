@@ -48,6 +48,8 @@ if [[ ! -f "$ROOT/qp_email_helper.config.json" && -f "$ROOT/qp_email_helper.conf
   echo "Created qp_email_helper.config.json from example (add API key in Settings)."
 fi
 
+qp_fix_launch_perms "$ROOT"
+
 echo
 echo "Optional: install Playwright browsers for Outlook email fetch"
 echo "  .venv/bin/playwright install chromium"
@@ -55,4 +57,5 @@ echo
 echo "Next:"
 echo "  ./scripts/run.sh                    # GUI (auto-starts RAG)"
 echo "  ./scripts/run_rag_service.sh        # RAG alone"
-echo "  ./scripts/smoke_macos.sh            # quick health check"
+echo "  ./scripts/smoke_macos.sh            # offline CI checks"
+echo "  ./scripts/smoke_macos.sh --live     # + live /health"
