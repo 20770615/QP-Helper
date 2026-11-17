@@ -1,0 +1,51 @@
+# Virtualenv, bundled runtime, browser profile
+.venv/
+_internal/
+.edge_profile/
+.edge_profiles/
+QP_Helper.exe
+QP_Helper.exe_extracted/
+dist/
+build/
+*.spec.bak
+
+# macOS
+.DS_Store
+*.app/
+# Keep the double-click starter wrapper (not the PyInstaller build product).
+!Start QP Helper.app/
+!Start QP Helper.app/**
+packaging/macos/dist/
+packaging/macos/build/
+
+# Original recovered source and decompile dumps (not this repo)
+recovered_src/
+recovered_src_backup_*/
+pyinstxtractor.py
+recover_dump.py
+recovered_ui_strings.json
+**/_dis/
+
+# Local secrets and machine-specific config
+qp_email_helper.config.json
+config.json
+config/
+**/config/user.json
+
+# Email dumps and logs
+reports/
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Local vector / cache data
+*.lance/
+lancedb_store/
+chroma_store/
+qdrant_store/
+embedding_model_cache/
+logs/

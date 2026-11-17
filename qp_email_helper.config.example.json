@@ -1,0 +1,22 @@
+{
+  "llm_base_url": "https://api.deepseek.com/v1",
+  "llm_api_key": "",
+  "llm_model": "deepseek-v4-pro",
+  "auto_retrieve": true,
+  "email_account": "",
+  "rag_service_port": 8765,
+  "popup_threshold": 0.75,
+  "popup_cooldown_seconds": 120,
+  "popup_enabled": true,
+  "extractive_summary_enabled": true,
+  "g_paths": {
+    "email_summary": "",
+    "meetings": "",
+    "docs": ""
+  },
+  "shared_root": "",
+  "ui_language": "en",
+  "holdings_csv_path": "",
+  "ms_client_id": "",
+  "ms_tenant_id": ""
+}

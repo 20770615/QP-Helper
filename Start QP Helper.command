@@ -1,0 +1,76 @@
+#!/bin/bash
+# Double-click launcher for macOS (opens in Terminal.app).
+# Keeps the Terminal window open if setup or launch fails so errors stay visible.
+set -u
+
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+cd "$ROOT" || {
+  echo "ERROR: cannot cd to repo root: $ROOT" >&2
+  read -r -p "Press Enter to close…"
+  exit 1
+}
+
+# Heal +x / quarantine after clone or zip download (best effort).
+chmod +x "$ROOT/scripts/"*.sh "$ROOT/Start QP Helper.command" "$ROOT/Start RAG Service.command" 2>/dev/null || true
+if command -v xattr >/dev/null 2>&1; then
+  xattr -dr com.apple.quarantine "$ROOT/Start QP Helper.command" "$ROOT/Start QP Helper.app" "$ROOT/scripts" 2>/dev/null || true
+fi
+
+# shellcheck disable=SC1091
+source "$ROOT/scripts/lib_macos.sh"
+qp_fix_launch_perms "$ROOT"
+
+echo "QP Helper"
+echo "Repo: $ROOT"
+echo
+
+NEED_SETUP=0
+if ! qp_venv_meets_310 "$ROOT"; then
+  NEED_SETUP=1
+elif ! qp_rag_imports_ok "$ROOT"; then
+  NEED_SETUP=1
+fi
+
+if [[ "$NEED_SETUP" -eq 1 ]]; then
+  echo "Setting up .venv / deps (first launch may take a few minutes)…"
+  echo "Requires Python ≥3.10 on PATH (not Apple CLT 3.9)."
+  if [[ ! -f "$ROOT/scripts/setup_macos.sh" ]]; then
+    echo "ERROR: scripts/setup_macos.sh is missing." >&2
+    read -r -p "Press Enter to close…"
+    exit 1
+  fi
+  chmod +x "$ROOT/scripts/setup_macos.sh" 2>/dev/null || true
+  if ! "$ROOT/scripts/setup_macos.sh"; then
+    echo "ERROR: setup_macos.sh failed." >&2
+    echo "Install Python 3.11+ (brew install python@3.11) then retry." >&2
+    read -r -p "Press Enter to close…"
+    exit 1
+  fi
+fi
+
+if [[ ! -f "$ROOT/qp_email_helper.config.json" ]]; then
+  if [[ -f "$ROOT/qp_email_helper.config.example.json" ]]; then
+    cp "$ROOT/qp_email_helper.config.example.json" "$ROOT/qp_email_helper.config.json"
+    echo "Created qp_email_helper.config.json from example (fill in API key in Settings)."
+  else
+    echo "WARNING: config example missing; continuing without local config file."
+  fi
+fi
+
+export RAG_VECTOR_BACKEND="${RAG_VECTOR_BACKEND:-lancedb}"
+
+echo "Launching QP Helper…"
+echo "(You can minimize this Terminal — closing it may quit the app.)"
+echo
+
+# Do not exec: we want to catch non-zero exits and pause.
+if "$ROOT/scripts/run.sh"; then
+  exit 0
+fi
+
+EC=$?
+echo
+echo "QP Helper exited with code $EC."
+echo "If the window vanished immediately, scroll up for Python/Qt errors."
+read -r -p "Press Enter to close…"
+exit "$EC"
