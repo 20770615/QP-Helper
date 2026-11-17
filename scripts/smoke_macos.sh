@@ -92,7 +92,7 @@ if ! qp_venv_meets_310 "$ROOT"; then
     exit 1
   fi
 fi
-ok "venv Python $($ROOT/.venv/bin/python --version 2>&1)"
+ok "venv Python $("$ROOT/.venv/bin/python" --version 2>&1)"
 
 # ── 2. model normalize (src + harness mirror) ───────────────────────────────
 if "$ROOT/.venv/bin/python" - <<'PY'
