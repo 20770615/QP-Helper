@@ -32,7 +32,7 @@ _ROOT = (
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSignal
+from PyQt6.QtCore import QEvent, QPoint, Qt, QThread, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QFont, QColor, QKeySequence, QTextCursor
 from PyQt6.QtWidgets import (
     QApplication,
@@ -58,6 +58,7 @@ from PyQt6.QtWidgets import (
     QWidget,
     QButtonGroup,
 )
+import shared_store
 
 from platform_compat import (
     apply_qt_macos_tweaks,
@@ -401,12 +402,51 @@ class HomeView(QWidget):
         self.input.setObjectName("chatInput")
         self.input.setPlaceholderText(t("chat.input_ph"))
         self.input.setFixedHeight(72)
+        self.input.setAcceptRichText(False)
+        self.input.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+        # Scope chip shown when user picks @ → Ask about folder/file.
+        self._scope_chip = QPushButton()
+        self._scope_chip.setObjectName("scopeChip")
+        self._scope_chip.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._scope_chip.setStyleSheet(
+            "QPushButton#scopeChip{background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd;"
+            "border-radius:10px;padding:2px 10px;font-size:12px;text-align:left;}"
+            "QPushButton#scopeChip:hover{background:#bae6fd;}"
+        )
+        self._scope_chip.setVisible(False)
+        self._scope_chip.clicked.connect(self._clear_ask_source)
+
+        input_wrap = QWidget()
+        input_v = QVBoxLayout(input_wrap)
+        input_v.setContentsMargins(0, 0, 0, 0)
+        input_v.setSpacing(4)
+        input_v.addWidget(self._scope_chip)
+        input_v.addWidget(self.input)
+
         self.send_btn = QPushButton(t("chat.send"))
         self.send_btn.setObjectName("sendBtn")
         self.send_btn.clicked.connect(self._send)
-        bottom.addWidget(self.input, 1)
+        bottom.addWidget(input_wrap, 1)
         bottom.addWidget(self.send_btn, 0, Qt.AlignmentFlag.AlignBottom)
         root.addLayout(bottom)
+
+        # @ mention menu (restored from Windows bytecode; missing after Mac recovery).
+        self._at_menu = QMenu(self)
+        self._at_menu.setObjectName("atMenu")
+        self._at_menu.setStyleSheet(
+            "QMenu#atMenu{background:#fff;border:1px solid #cbd5e1;border-radius:12px;"
+            "padding:4px;outline:0;}"
+            "QMenu#atMenu::item{height:34px;padding:0 12px;border-radius:8px;color:#1a1a1a;}"
+            "QMenu#atMenu::item:selected{background:#e0f2fe;color:#0369a1;}"
+            "QMenu#atMenu::item:disabled{color:#999;}"
+        )
+        self._at_menu.hide()
+        self._at_menu.triggered.connect(self._on_at_triggered)
+        self._at_index = 0
+        self._at_menu_pending = False
+        self.input.textChanged.connect(self._on_input_changed)
+        self.input.installEventFilter(self)
 
     def retranslate(self):
         self.page_title.setText(t("header.home"))
@@ -516,28 +556,237 @@ class HomeView(QWidget):
             ),
         )
 
-    def _send(self):
-        q = self.input.toPlainText().strip()
-        if not q:
+    def _on_input_changed(self):
+        """Open the @ command menu when the input starts with a bare `@` token."""
+        text = self.input.toPlainText()
+        # Bare `@` (or `@partial` without a space) → show / filter the menu.
+        if text.startswith("@") and " " not in text[1:]:
+            self._show_at_menu(text[1:].strip())
+        else:
+            self._hide_at_menu()
+
+    def _show_at_menu(self, filter_text: str = ""):
+        """Populate and show the @ menu above the chat input.
+
+        Uses non-blocking ``popup()`` (deferred) instead of modal ``exec()``.
+        Modal exec nested inside ``textChanged`` / IME composition is unreliable
+        on macOS and can swallow the @ keystroke or steal focus permanently.
+        """
+        try:
+            self._at_menu.clear()
+            items = (
+                ("at.menu_search", "search"),
+                ("at.menu_summary", "summary"),
+                ("at.menu_ask_folder", "ask_folder"),
+                ("at.menu_ask_file", "ask_file"),
+            )
+            for key, cmd in items:
+                label = t(key)
+                if filter_text and filter_text.lower() not in label.lower():
+                    continue
+                action = self._at_menu.addAction(label)
+                action.setData(cmd)
+            if self._at_menu.isEmpty():
+                self._hide_at_menu()
+                return
+            self._at_index = 0
+            acts = [a for a in self._at_menu.actions() if a.isEnabled()]
+            if acts:
+                self._at_menu.setActiveAction(acts[0])
+
+            # Already open → just refresh actions (lets user type to filter).
+            if self._at_menu.isVisible():
+                return
+
+            def _popup():
+                self._at_menu_pending = False
+                if self._at_menu.isEmpty():
+                    return
+                # Re-check: user may have typed a space / deleted @ meanwhile.
+                cur = self.input.toPlainText()
+                if not (cur.startswith("@") and " " not in cur[1:]):
+                    return
+                gp = self.input.mapToGlobal(QPoint(0, 0))
+                h = self._at_menu.sizeHint().height()
+                y = max(8, gp.y() - h - 4)
+                self._at_menu.popup(QPoint(gp.x(), y))
+
+            # Defer so we are outside the textChanged / inputMethod event stack
+            # (critical on macOS where modal exec nested in IME breaks @).
+            if not self._at_menu_pending:
+                self._at_menu_pending = True
+                QTimer.singleShot(0, _popup)
+        except Exception as e:
+            QMessageBox.critical(self, "AT menu error", f"{type(e).__name__}: {e}")
+
+    def _hide_at_menu(self):
+        if self._at_menu.isVisible():
+            self._at_menu.hide()
+
+    def eventFilter(self, obj, event):
+        if obj is self.input and event.type() == QEvent.Type.KeyPress:
+            key = event.key()
+            # macOS / IME: also open the menu when the physical @ character arrives.
+            # Qt.Key.Key_At == 64; some layouts deliver '@' via text() only.
+            text = event.text() or ""
+            if (key == Qt.Key.Key_At or text == "@") and not self._at_menu.isVisible():
+                # Let the character insert first; textChanged will open the menu.
+                # Returning False keeps default insert behavior.
+                pass
+            if self._at_menu.isVisible():
+                acts = [a for a in self._at_menu.actions() if a.isEnabled()]
+                if acts:
+                    if key == Qt.Key.Key_Down:
+                        self._at_index = min(self._at_index + 1, len(acts) - 1)
+                        self._at_menu.setActiveAction(acts[self._at_index])
+                        return True
+                    if key == Qt.Key.Key_Up:
+                        self._at_index = max(self._at_index - 1, 0)
+                        self._at_menu.setActiveAction(acts[self._at_index])
+                        return True
+                    if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                        self._on_at_triggered(acts[self._at_index])
+                        return True
+                if key == Qt.Key.Key_Escape:
+                    self._hide_at_menu()
+                    return True
+            elif key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                modifiers = event.modifiers()
+                if modifiers & Qt.KeyboardModifier.ShiftModifier:
+                    return False  # Shift+Enter → newline
+                self._send()
+                return True
+        return super().eventFilter(obj, event)
+
+    def _on_at_triggered(self, action):
+        if action is None:
             return
+        data = action.data()
+        if not data:
+            return
+        self._hide_at_menu()
+        if data == "search":
+            self.input.setPlainText("@" + t("at.cmd_search") + " ")
+            self.input.setFocus()
+            cursor = self.input.textCursor()
+            cursor.movePosition(QTextCursor.MoveOperation.End)
+            self.input.setTextCursor(cursor)
+            return
+        if data == "summary":
+            # Full email-summary panel is not yet restored; keep a clear tip.
+            QMessageBox.information(
+                self,
+                t("common.info"),
+                t("at.menu_summary") + " — " + t("at.scope_hint"),
+            )
+            self.input.clear()
+            return
+        if data == "ask_folder":
+            try:
+                path = QFileDialog.getExistingDirectory(
+                    self,
+                    t("at.pick_folder_title"),
+                    str(shared_store.kb_root()),
+                )
+            except Exception as e:
+                QMessageBox.critical(self, t("common.error"), f"folder dialog: {e}")
+                return
+            if path:
+                self._set_ask_source(path)
+            return
+        if data == "ask_file":
+            try:
+                path, _ = QFileDialog.getOpenFileName(
+                    self,
+                    t("at.pick_file_title"),
+                    str(shared_store.kb_root()),
+                )
+            except Exception as e:
+                QMessageBox.critical(self, t("common.error"), f"file dialog: {e}")
+                return
+            if path:
+                self._set_ask_source(path)
+
+    def _set_ask_source(self, path: str):
+        norm = os.path.normpath(path).replace("\\", "/")
+        self._ask_source_paths = [norm]
+        base = os.path.basename(path.rstrip("/\\")) or path
+        self._scope_chip.setText(t("at.scope_chip").format(name=base))
+        self._scope_chip.setVisible(True)
+        self.input.clear()
+        self.input.setFocus()
+
+    def _clear_ask_source(self):
+        self._ask_source_paths = []
+        self._scope_chip.setVisible(False)
+
+    def _send(self):
+        raw = (
+            self.input.toPlainText()
+            .strip()
+            .replace("\u2029", "\n")
+            .replace("\r\n", "\n")
+            .replace("\r", "\n")
+        )
+        if not raw:
+            return
+
+        force_retrieve = False
+        filter_paths: list[str] = []
+        query = raw
+
+        if self._ask_source_paths:
+            q = raw
+            if q.startswith("@source"):
+                q = q[len("@source") :].strip()
+            if not q:
+                return
+            query = q
+            filter_paths = list(self._ask_source_paths)
+            self._ask_source_paths = []
+            self._scope_chip.setVisible(False)
+            force_retrieve = True
+        elif raw.startswith("@source"):
+            query = raw[len("@source") :].strip()
+            if query:
+                QMessageBox.information(self, t("common.info"), t("at.scope_hint"))
+        else:
+            search_cmds = ("@" + t("at.cmd_search"), "@检索文件", "@Search files")
+            matched = False
+            for prefix in search_cmds:
+                if raw.startswith(prefix):
+                    query = raw[len(prefix) :].strip()
+                    force_retrieve = True
+                    matched = True
+                    break
+            if matched and not query:
+                QMessageBox.information(
+                    self,
+                    t("common.info"),
+                    t("at.search_empty", cmd=t("at.cmd_search")),
+                )
+                return
+
         if not self.main.rag_client or not self.main.rag_client.is_alive():
             self._add_bubble(t("chat.offline"), "info")
             return
-        self._add_bubble(q, "user")
-        self.history.append({"role": "user", "content": q})
+        self._hide_at_menu()
+        self._add_bubble(query, "user")
+        self.history.append({"role": "user", "content": query})
         self.input.clear()
         self.send_btn.setEnabled(False)
         self.send_btn.setText(t("chat.thinking"))
         self._worker = AskWorker(
             self.main.rag_client,
-            q,
+            query,
             self.history[:-1],
-            filter_paths=list(self._ask_source_paths),
+            force_retrieve=force_retrieve,
+            filter_paths=filter_paths,
         )
         self._worker.finished_ok.connect(self._on_answer)
         self._worker.finished_err.connect(self._on_error)
         self._worker.start()
-        log_action("ask", query=q)
+        log_action("ask", query=query)
 
     def _on_answer(self, resp: dict):
         self.send_btn.setEnabled(True)
@@ -553,7 +802,6 @@ class HomeView(QWidget):
                 snip = (c.get("snippet") or "")[:160]
                 bits.append(f"<b>{src}</b><br>{snip}")
             self._add_bubble("<br><br>".join(bits), "info")
-        self._ask_source_paths = []
 
     def _on_error(self, msg: str):
         self.send_btn.setEnabled(True)
