@@ -265,6 +265,21 @@ class RagServiceManager:
         # Dev fallback: current interpreter (works on macOS/Linux/Windows).
         return Path(sys.executable)
 
+    @staticmethod
+    def _python_is_310_plus(py: Path) -> bool:
+        try:
+            import subprocess
+
+            r = subprocess.run(
+                [str(py), "-c", "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)"],
+                capture_output=True,
+                timeout=10,
+                **subprocess_hidden_kwargs(),
+            )
+            return r.returncode == 0
+        except Exception:
+            return False
+
     def start(self) -> tuple[bool, str]:
         if self.is_running():
             return True, "already running"
@@ -277,6 +292,11 @@ class RagServiceManager:
             )
         if not py:
             return False, t("st.service_error_no_python")
+        if not self._python_is_310_plus(py):
+            return False, (
+                f"{py} is Python <3.10 — recreate .venv with ./scripts/setup_macos.sh "
+                "(Apple CLT python3 is 3.9.x and breaks LanceDB)"
+            )
         import subprocess
 
         env = os.environ.copy()

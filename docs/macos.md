@@ -1,107 +1,58 @@
-# macOS setup, packaging, and notarization
+# macOS — usable path + packaging
 
-QP Helper is a **PyQt6** desktop app. The Windows portable layout used
-`.venv\Scripts\python.exe` and `G:\` shared-drive defaults. This repo adds
-macOS-native paths, menus, Finder integration, and packaging hooks.
+## Run (dev)
 
-## Dev run (Mac)
-
-**Easiest:** double-click `Start QP Helper.command` (or `Start QP Helper.app`)
-in Finder. That launcher `cd`s to the repo, runs `scripts/setup_macos.sh` when
-`.venv` is missing, copies the example config if needed, then starts the GUI.
-If launch fails, the Terminal window stays open so stderr remains visible.
-
-Or from a shell:
+1. Install **Python ≥3.10** (Homebrew / python.org / micromamba). Apple CLT 3.9 cannot install `lancedb>=0.34`.
+2. Double-click **`Start QP Helper.command`** (or `Start QP Helper.app`).
+   - Recreates `.venv` if missing or still on 3.9.
+   - Copies `qp_email_helper.config.example.json` → `qp_email_helper.config.json` when needed.
+   - Starts the GUI; RAG auto-starts on `127.0.0.1:8765`.
+3. Settings → set API key (defaults: DeepSeek base URL + `deepseek-v4-pro`) → Save → ask on Home.
 
 ```bash
 ./scripts/setup_macos.sh
-cp qp_email_helper.config.example.json qp_email_helper.config.json
-# edit API key / shared root in the config file
 ./scripts/run.sh
+./scripts/smoke_macos.sh    # venv version, /health, model normalize; /ask only if key present
 ```
 
-Default shared root on macOS: `~/Documents/QP Helper/Shared`.
+Optional Outlook fetch: `.venv/bin/playwright install chromium`.
 
-If a background/agent-started Python process vanishes after a few seconds with
-no traceback, prefer the `.command` launcher (Terminal-owned GUI session) so
-macOS does not sudden-terminate an anonymous `Python` accessory process.
+Default shared root: `~/Documents/QP Helper/Shared`.
 
-Outlook email fetch still needs Playwright browsers:
+If a background Python GUI vanishes with no traceback, use the `.command` launcher (Terminal-owned session) so macOS does not sudden-terminate an accessory process.
 
-```bash
-.venv/bin/playwright install chromium
-```
-
-## Build `.app` / `.dmg` (must run on a Mac)
+## Build `.app` / `.dmg` (on a Mac)
 
 ```bash
 ./packaging/macos/build_macos.sh
 ```
 
-Outputs:
+Outputs `dist/QP Helper.app` and `dist/QP-Helper-macOS.dmg`.
+See `packaging/macos/` for Info.plist, entitlements, and the PyInstaller spec.
+Optional: add `packaging/macos/AppIcon.icns`.
 
-- `dist/QP Helper.app`
-- `dist/QP-Helper-macOS.dmg` (via `hdiutil`)
-
-Files involved:
-
-- `packaging/macos/qp-helper.spec` — PyInstaller bundle
-- `packaging/macos/Info.plist` — bundle metadata
-- `packaging/macos/entitlements.plist` — Hardened Runtime entitlements
-
-Optional: add `packaging/macos/AppIcon.icns` and set `icon=` in the spec.
-
-## Codesign + notarize (manual — needs Apple Developer certs)
-
-These steps require a physical Mac, an Apple Developer Program membership,
-and secrets that should **never** be committed:
-
-1. Import your **Developer ID Application** certificate into the login keychain.
-2. Create an app-specific password / API key for notarytool.
-3. Sign the app (replace identity name):
+## Codesign + notarize (your Apple certs — never commit secrets)
 
 ```bash
 codesign --deep --force --options runtime \
   --entitlements packaging/macos/entitlements.plist \
   --sign "Developer ID Application: YOUR NAME (TEAMID)" \
   "dist/QP Helper.app"
-```
 
-4. Notarize:
-
-```bash
 xcrun notarytool submit "dist/QP-Helper-macOS.dmg" \
-  --apple-id "you@example.com" \
-  --team-id "TEAMID" \
-  --password "app-specific-password" \
-  --wait
-```
+  --apple-id "you@example.com" --team-id "TEAMID" \
+  --password "app-specific-password" --wait
 
-5. Staple:
-
-```bash
 xcrun stapler staple "dist/QP Helper.app"
 xcrun stapler staple "dist/QP-Helper-macOS.dmg"
-```
-
-6. Gatekeeper check:
-
-```bash
 spctl --assess --type execute -vv "dist/QP Helper.app"
 ```
 
-## What still needs a real Mac
+## Still needs a real Mac
 
 | Item | Why |
 |------|-----|
-| GUI smoke test | Cloud agents cannot exercise PyQt/Finder/Dock |
-| Developer ID signing | Requires your Apple cert + private key |
-| Notarization | Requires Apple ID / API key secrets |
-| App icon `.icns` | Optional brand asset |
-| Playwright Outlook login | Browser automation against real Edge/Chrome |
-
-## Windows / Linux behavior
-
-Windows launchers (`scripts/run.bat`, `scripts/run_qdrant.bat`) and Windows
-venv path discovery remain intact. Linux uses the same `run.sh` path helpers
-as macOS (`xdg-open` for files).
+| GUI / Dock / Gatekeeper click-through | Cloud agents cannot exercise PyQt + Finder |
+| Developer ID signing + notarization | Your Apple cert / notary secrets |
+| Optional AppIcon.icns | Brand asset |
+| Playwright Outlook login | Real browser session |

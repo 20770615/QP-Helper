@@ -898,7 +898,14 @@ def _kb_root() -> Path | None:
         except Exception:
             pass
     if not root:
-        root = "G:/QAML-qam/Investment Team/"
+        # Match desktop defaults: Documents on macOS/Linux; legacy G: on Windows
+        # only when that share is actually mounted.
+        if sys.platform == "darwin":
+            root = str(Path.home() / "Documents" / "QP Helper" / "Shared")
+        elif sys.platform.startswith("win"):
+            root = "G:/QAML-qam/Investment Team/"
+        else:
+            root = str(Path.home() / "Documents" / "QP-Helper" / "Shared")
     path = Path(root)
     return path if path.exists() else None
 

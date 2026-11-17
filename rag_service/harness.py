@@ -461,7 +461,7 @@ class OpenAIAgentsHarness(BaseHarness):
         from rag._pathmatch import source_matches  # shared folder/file scoping
         self._retrieve = retrieve
         self._source_matches = source_matches
-        self.model = self._normalize_model(model) or "gpt-4o"
+        self.model = self._normalize_model(model) or "deepseek-v4-pro"
         self._key_set = bool(api_key)
         # Shared-scope: retrieval filters by scope only, never by user_id.
         # user_id is for audit/attribution, not for filtering.

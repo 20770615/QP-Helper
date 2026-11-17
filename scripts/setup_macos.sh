@@ -1,52 +1,39 @@
 #!/usr/bin/env bash
-# Create a local .venv and install QP Helper deps on macOS.
+# Create a local .venv (Python >=3.10) and install QP Helper + RAG deps on macOS.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+# shellcheck disable=SC1091
+source "$ROOT/scripts/lib_macos.sh"
 
-# Prefer PYTHON=… if set; else any python3.10+ on PATH / common user-local installs.
-# Apple CLT ships 3.9.6 — too old for lancedb>=0.34. Micromamba/miniforge/python.org
-# installs under ~/.local are checked before falling back to system python3.
-_pick_python() {
-  local cand ver major minor
-  for cand in \
-    "${PYTHON:-}" \
-    "$HOME/.local/micromamba/envs/qp-helper-py311/bin/python" \
-    "$HOME/.local/micromamba/envs/qp-helper-py311/bin/python3" \
-    "$HOME/miniforge3/bin/python3" \
-    "$HOME/mambaforge/bin/python3" \
-    "$HOME/.local/bin/python3.12" \
-    "$HOME/.local/bin/python3.11" \
-    "$HOME/.local/bin/python3.10" \
-    "$(command -v python3.12 2>/dev/null || true)" \
-    "$(command -v python3.11 2>/dev/null || true)" \
-    "$(command -v python3.10 2>/dev/null || true)" \
-    "$(command -v python3 2>/dev/null || true)"
-  do
-    [[ -n "$cand" && -x "$cand" ]] || continue
-    ver="$("$cand" -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || true)"
-    [[ -n "$ver" ]] || continue
-    major="${ver%%.*}"
-    minor="${ver#*.}"
-    if [[ "$major" -gt 3 ]] || { [[ "$major" -eq 3 ]] && [[ "$minor" -ge 10 ]]; }; then
-      echo "$cand"
-      return 0
-    fi
-  done
-  return 1
-}
-
-PYTHON="$(_pick_python || true)"
+PYTHON="$(qp_pick_python || true)"
 if [[ -z "$PYTHON" ]]; then
-  echo "No Python >=3.10 found. Install via micromamba/miniforge or python.org," >&2
+  echo "No Python >=3.10 found. Install via Homebrew, python.org, or micromamba/miniforge," >&2
   echo "or set PYTHON=/path/to/python3.11 before running this script." >&2
   echo "Apple CLT python3 is 3.9.x and cannot install lancedb>=0.34." >&2
   exit 1
 fi
 
 echo "Using $PYTHON ($("$PYTHON" --version 2>&1))"
-"$PYTHON" -m venv .venv
+
+# Recreate .venv if missing, <3.10, or broken (e.g. ensurepip never ran).
+REUSE=0
+if [[ -x "$ROOT/.venv/bin/python" ]] && qp_venv_meets_310 "$ROOT"; then
+  if "$ROOT/.venv/bin/python" -m pip --version >/dev/null 2>&1; then
+    REUSE=1
+  fi
+fi
+if [[ "$REUSE" -eq 1 ]]; then
+  echo "Reusing existing .venv ($("$ROOT/.venv/bin/python" --version 2>&1))"
+else
+  if [[ -d "$ROOT/.venv" ]]; then
+    echo "Existing .venv unusable (<3.10 or no pip) — recreating…"
+    rm -rf "$ROOT/.venv"
+  fi
+  "$PYTHON" -m venv .venv
+fi
+
 # shellcheck disable=SC1091
 source .venv/bin/activate
 python -m pip install --upgrade pip
@@ -56,11 +43,16 @@ if [[ -f "$ROOT/requirements-rag.txt" ]]; then
   python -m pip install -r requirements-rag.txt
 fi
 
+if [[ ! -f "$ROOT/qp_email_helper.config.json" && -f "$ROOT/qp_email_helper.config.example.json" ]]; then
+  cp "$ROOT/qp_email_helper.config.example.json" "$ROOT/qp_email_helper.config.json"
+  echo "Created qp_email_helper.config.json from example (add API key in Settings)."
+fi
+
 echo
 echo "Optional: install Playwright browsers for Outlook email fetch"
 echo "  .venv/bin/playwright install chromium"
 echo
 echo "Next:"
-echo "  cp qp_email_helper.config.example.json qp_email_helper.config.json"
-echo "  ./scripts/run.sh"
-echo "  # or start RAG alone: ./scripts/run_rag_service.sh"
+echo "  ./scripts/run.sh                    # GUI (auto-starts RAG)"
+echo "  ./scripts/run_rag_service.sh        # RAG alone"
+echo "  ./scripts/smoke_macos.sh            # quick health check"

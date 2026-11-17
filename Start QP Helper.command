@@ -10,12 +10,22 @@ cd "$ROOT" || {
   exit 1
 }
 
+# shellcheck disable=SC1091
+source "$ROOT/scripts/lib_macos.sh"
+
 echo "QP Helper"
 echo "Repo: $ROOT"
 echo
 
-if [[ ! -x "$ROOT/.venv/bin/python" ]]; then
-  echo "No .venv found — running macOS setup (first launch may take a few minutes)…"
+NEED_SETUP=0
+if ! qp_venv_meets_310 "$ROOT"; then
+  NEED_SETUP=1
+elif ! qp_rag_imports_ok "$ROOT"; then
+  NEED_SETUP=1
+fi
+
+if [[ "$NEED_SETUP" -eq 1 ]]; then
+  echo "Setting up .venv / deps (first launch may take a few minutes)…"
   if [[ ! -x "$ROOT/scripts/setup_macos.sh" ]]; then
     echo "ERROR: scripts/setup_macos.sh is missing." >&2
     read -r -p "Press Enter to close…"

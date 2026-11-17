@@ -1,7 +1,7 @@
 {
-  "llm_base_url": "",
+  "llm_base_url": "https://api.deepseek.com/v1",
   "llm_api_key": "",
-  "llm_model": "",
+  "llm_model": "deepseek-v4-pro",
   "auto_retrieve": true,
   "email_account": "",
   "rag_service_port": 8765,

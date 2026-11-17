@@ -51,9 +51,9 @@ DEFAULT_SHARED_ROOT = default_shared_root()
 DEFAULT_UI_LANGUAGE = "zh"
 
 DEFAULT_APP_CONFIG: dict[str, Any] = {
-    "llm_base_url": "",
+    "llm_base_url": "https://api.deepseek.com/v1",
     "llm_api_key": "",
-    "llm_model": "",
+    "llm_model": "deepseek-v4-pro",
     "auto_retrieve": True,
     "email_account": "",
     "rag_service_port": 8765,
@@ -112,6 +112,10 @@ def load_app_config() -> dict[str, Any]:
                 cfg.update(data)
         except Exception:
             pass
+    # Always canonicalize model ids so a stale "deepseek-V4-Pro" never hits the API.
+    cfg["llm_model"] = normalize_llm_model(cfg.get("llm_model")) or DEFAULT_APP_CONFIG["llm_model"]
+    if not (cfg.get("llm_base_url") or "").strip():
+        cfg["llm_base_url"] = DEFAULT_APP_CONFIG["llm_base_url"]
     return cfg
 
 

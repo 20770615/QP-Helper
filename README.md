@@ -1,39 +1,34 @@
 # QP Helper
 
-QP Helper is an integrated research portal for equity analysis. It helps
-investment teams unify emails, documents, meeting notes, and portfolio data,
-retrieve relevant context through search and RAG, and turn mixed sources into
-a decision-making workflow.
+Cross-platform **PyQt6** research desktop app (emails, docs, RAG chat).
+UI source: [`src/`](src/). Upstream Windows UI: [`QP-Email-Helper`](https://github.com/20770615/QP-Email-Helper).
 
-This repository is the **cross-platform PyQt6 desktop app**, with first-class
-**macOS** support (paths, menus, Finder, packaging) while keeping Windows and
-Linux launch paths working.
+## macOS — usable path
 
-UI source lives in [`src/`](src/). Upstream Windows-oriented UI also exists in
-[`QP-Email-Helper`](https://github.com/20770615/QP-Email-Helper).
+Needs **Python ≥3.10** (Apple CLT `python3` is 3.9.x — too old for LanceDB).
 
-## Quick start
+1. Install Python 3.11+ (Homebrew `brew install python@3.11`, python.org, or micromamba).
+2. Double-click **`Start QP Helper.command`** (or `Start QP Helper.app`).
+   - Creates `.venv`, installs deps, copies config if missing, starts the GUI.
+   - App **auto-starts** the local RAG service on port `8765`.
+3. Open **Settings** → paste your DeepSeek (or compatible) **API key** → Save.
+   - Defaults: `https://api.deepseek.com/v1` + model `deepseek-v4-pro`.
+4. Ask a question on Home (knowledge base / chat).
 
-### macOS
-
-**Double-click** `Start QP Helper.command` (or `Start QP Helper.app`) in Finder.
-First launch creates `.venv` and a config file if needed; Terminal stays open
-on errors so you can read them.
-
-Or from a shell:
+Shell equivalent:
 
 ```bash
 ./scripts/setup_macos.sh
-cp qp_email_helper.config.example.json qp_email_helper.config.json
-./scripts/run.sh
+./scripts/run.sh                 # GUI + auto RAG
+# or: ./scripts/run_rag_service.sh   / double-click Start RAG Service.command
+./scripts/smoke_macos.sh         # venv /health / normalize; /ask only if key set
 ```
 
-See [docs/macos.md](docs/macos.md) for `.app` / `.dmg` builds, codesigning,
-and notarization.
+Shared docs default: `~/Documents/QP Helper/Shared`. Details / `.app` build / notarization: [docs/macos.md](docs/macos.md).
 
-### Windows
+## Windows
 
-**Double-click** `Start QP Helper.bat`, or:
+Double-click `Start QP Helper.bat`, or:
 
 ```powershell
 python -m venv .venv
@@ -42,56 +37,26 @@ copy qp_email_helper.config.example.json qp_email_helper.config.json
 .\scripts\run.bat
 ```
 
-### Linux
+## Linux
 
 ```bash
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt -r requirements-rag.txt
 cp qp_email_helper.config.example.json qp_email_helper.config.json
 ./scripts/run.sh
 ```
 
-## RAG service
-
-The local FastAPI backend lives in `rag_service/` (uses the `rag/` package,
-LanceDB by default). Needs **Python ≥3.10** in `.venv` (Apple CLT `python3` is
-3.9.x — too old for `lancedb>=0.34`). `scripts/setup_macos.sh` auto-picks
-python3.10+ from PATH or `~/.local/micromamba/envs/qp-helper-py311`.
-
-```bash
-./scripts/setup_macos.sh       # creates .venv with Python ≥3.10 when available
-./scripts/setup_rag_macos.sh   # if RAG deps are not installed yet
-./scripts/run_rag_service.sh   # or double-click Start RAG Service.command
-```
-
-The desktop app also auto-starts this service on launch (port from config,
-default `8765`). Set `llm_*` in `qp_email_helper.config.json` for answers;
-embeddings use a local sentence-transformers model (no API key).
-
 ## Config
 
-Copy `qp_email_helper.config.example.json` → `qp_email_helper.config.json`
-and fill in local settings. Do not commit API keys.
-
-On macOS the default shared root is `~/Documents/QP Helper/Shared`. On Windows
-leave `shared_root` empty (or point it at your `G:\` team share) until configured
-in **Settings**.
-
-## Packaging (macOS)
-
-```bash
-./packaging/macos/build_macos.sh
-```
-
-Produces `dist/QP Helper.app` and `dist/QP-Helper-macOS.dmg`. Signing and
-Apple notarization require your Developer ID certificate — see
-[docs/macos.md](docs/macos.md).
+`qp_email_helper.config.example.json` → `qp_email_helper.config.json` (gitignored).
+Do not commit API keys. Empty / wrong-cased DeepSeek model ids are normalized to
+`deepseek-v4-pro` / `deepseek-flash`.
 
 ## Layout
 
 ```
 src/                  PyQt6 application
-scripts/              run / setup helpers (sh + bat)
-packaging/macos/      Info.plist, entitlements, PyInstaller spec
-docs/macos.md         Mac build + notarization notes
+rag/ + rag_service/   local LanceDB RAG API (default :8765)
+scripts/              setup / run / smoke helpers
+packaging/macos/      Info.plist, entitlements, PyInstaller
+docs/macos.md         Mac build + notarization
 ```

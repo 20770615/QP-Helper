@@ -4,10 +4,12 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+# shellcheck disable=SC1091
+source "$ROOT/scripts/lib_macos.sh"
 
-if [[ ! -x "$ROOT/.venv/bin/python" ]]; then
-  echo "No .venv. Run ./scripts/setup_macos.sh then ./scripts/setup_rag_macos.sh" >&2
-  exit 1
+if ! qp_venv_meets_310 "$ROOT"; then
+  echo "No usable .venv (Python >=3.10). Running setup_macos.sh…"
+  "$ROOT/scripts/setup_macos.sh"
 fi
 
 if [[ ! -f "$ROOT/rag_service/main.py" ]]; then
@@ -15,8 +17,8 @@ if [[ ! -f "$ROOT/rag_service/main.py" ]]; then
   exit 1
 fi
 
-# Ensure RAG Python deps are present (fastapi is a cheap sentinel).
-if ! "$ROOT/.venv/bin/python" -c "import fastapi, uvicorn, lancedb, sentence_transformers" 2>/dev/null; then
+# Ensure RAG Python deps are present (fastapi/lancedb are cheap sentinels).
+if ! qp_rag_imports_ok "$ROOT"; then
   echo "RAG packages missing — installing via setup_rag_macos.sh…"
   "$ROOT/scripts/setup_rag_macos.sh"
 fi
@@ -33,6 +35,7 @@ PORT="${RAG_SERVICE_PORT:-8765}"
 mkdir -p "$ROOT/logs"
 LOG_FILE="$ROOT/logs/rag_service.log"
 echo "Starting rag_service on 127.0.0.1:${PORT} (backend=${RAG_VECTOR_BACKEND})"
+echo "venv: $("$ROOT/.venv/bin/python" --version 2>&1)"
 echo "Logs also append to $LOG_FILE"
 echo
 

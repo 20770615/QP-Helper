@@ -4,15 +4,13 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+# shellcheck disable=SC1091
+source "$ROOT/scripts/lib_macos.sh"
 
-if [[ -x "$ROOT/.venv/bin/python" ]]; then
-  PY="$ROOT/.venv/bin/python"
-elif command -v python3 >/dev/null 2>&1; then
-  PY="$(command -v python3)"
-else
-  echo "No Python found. Run ./scripts/setup_macos.sh first." >&2
+if ! qp_venv_meets_310 "$ROOT"; then
+  echo "No usable .venv (Python >=3.10). Run ./scripts/setup_macos.sh first." >&2
   exit 1
 fi
 
 export RAG_VECTOR_BACKEND="${RAG_VECTOR_BACKEND:-lancedb}"
-exec "$PY" "$ROOT/src/qp_email_helper.py" "$@"
+exec "$ROOT/.venv/bin/python" "$ROOT/src/qp_email_helper.py" "$@"
